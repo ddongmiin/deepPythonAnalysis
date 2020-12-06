@@ -41,9 +41,13 @@ with open("C:/Users/HOME/Dropbox/dataset/used/perf-history/raw_nyc_phil.json",'r
 
 # ## 2-2. KEY1
 
+type(json_sample)
+
 json_sample.keys()
 
-json_sample.values()
+# +
+# json_sample.values()
+# -
 
 # ## 2-3. KEY2
 
@@ -59,9 +63,17 @@ json_sample['programs'][0].keys()
 
 type(json_sample['programs'][0]['works'])
 
-json_sample['programs'][0]['works'][0]
+# +
+# json_sample['programs'][0]['works']
 
-json_sample['programs'][0].values()
+# +
+# json_sample['programs'][0].values()
+# -
+
+import genson
+builder = genson.SchemaBuilder()
+builder.add_schema(json_sample)
+# builder.to_schema()
 
 # # 3. JSON DECODE1. JSON_NORMALIZE
 
@@ -85,11 +97,11 @@ works_data = pd.json_normalize(data=json_sample['programs'],
                             record_path = 'works',
                            meta=['season', 'orchestra', 'programID', 'id'])
 
-works_data.head(3)
-
 works_data.rename(columns = { 'ID': 'workTitle_ID', 'id' : 'work_ID'}, inplace=True)
 
-works_data.head(1)
+# +
+# works_data[['workTitle', 'soloists', 'conductorName', 'workTitle_ID', 'season', 'orchestra', 'programID', 'work_ID']].head(3)
+# -
 
 works_data.drop.drop_duplicates().shape
 
@@ -98,8 +110,6 @@ works_data.drop.drop_duplicates().shape
 concerts_data = pd.json_normalize(data=json_sample['programs'],
                             record_path = 'concerts',
                            meta=['programID', 'id'])
-
-concerts_data.head()
 
 concerts_data.rename(columns = {'id' : 'work_ID'}, inplace=True)
 
@@ -115,18 +125,22 @@ print(len(concerts_group2.loc[(concerts_group2.work_ID > 1)]))
 
 # ## 3-4. Get_soloists
 
-soloists_data = pd.json_normalize(data=json_sample['programs'],
-                                  record_path=['works', 'soloists'],
-                                  meta=['ID', 'programID'])
+# +
+# soloists_data = pd.json_normalize(data=json_sample['programs'],
+#                                   record_path=['works', 'soloists'],
+#                                   meta=['ID', 'programID'])
+# -
 
-# * 뭔가 마음 같지가 않다.
+# * ID.key error
 #     * record_path : 말 그대로 path일 뿐이다. 그래서, ID값이 키에 없는 것
 
 # # 4. Make soloists data
 
 # ## 4-1. Check_Unique Key
 
-works_data['workTitle_ID'].value_counts()
+# +
+# works_data['workTitle_ID'].value_counts()
+# -
 
 len(works_data.loc[(works_data.workTitle_ID == '0*'), 'work_ID'].unique())
 
@@ -134,70 +148,35 @@ len(works_data.loc[(works_data.workTitle_ID == '0*'), 'work_ID'].unique())
 
 # ## 4-2. preprocessing
 
-# ### 4-2-1. dict in list To dict
+test = works_data.to_json(orient='table')
+parsed = json.loads(test)
+parsed.keys()
 
-works_to_json = works_data.loc[(works_data.soloists.str.len() != 0)].reset_index(drop=True)
+parsed['schema']
 
-# * 빈 리스트 값은 필요가 없으므로 제거
+parsed['data'][0].keys()
 
-a = [{'1':2}]
+soloists_data = pd.json_normalize(data=parsed['data'],
+                                  record_path=['soloists'],
+                                  meta=['workTitle_ID', 'programID', 'work_ID'])
 
-dict(a[0])
+soloists_data.head()
 
+print(soloists_data.shape)
+print(works_data.shape)
 
-def listTodict(df, col1) :
-    for i in df.index:
-        df.at[i, col1] = df.at[i, col1][0]
+works_data_test = works_data.copy()
+works_data_test['len_soloists'] = works_data_test.soloists.map(lambda x : len(x))
+works_data_test['len_soloists'].sum()
 
-
-def listTodict2(s):
-    return s[0]
-
-
-works_to_json.columns
-
-test_df = works_to_json.copy()
-test_df2 = works_to_json.copy()
-
-listTodict(test_df, 'soloists')
-
-test_df2['soloists'] = test_df2['soloists'].apply(listTodict2)
-
-# * apply의 속도가 더 빠르다.
-
-print(test_df['soloists'].head(2))
-print(test_df2['soloists'].head(2))
-
-# ### 4-2-2. dict to dataframe
-
-pd.DataFrame(test_df2.soloists.tolist()).head()
-
-test_df2.soloists.apply(pd.Series).head()
-
-# * tolist의 속도가 더 빠르다.
-
-# ### 4-2-3. add other columns
-
-worksWithSolo = pd.concat([test_df2[['workTitle_ID','programID','work_ID']]
-                           , pd.DataFrame(test_df2.soloists.tolist())], axis=1)
-
-worksWithSolo.rename(columns = {'id' : 'Work_ID'}, inplace=True)
-
-worksWithSolo.shape
-
-pd.DataFrame(test_df2.soloists.tolist()).shape
-
-worksWithSolo.drop_duplicates(inplace=True)
-
-worksWithSolo.shape
-
-worksWithSolo.head(1)
+# soloists_data.shape == works_data_test['len_soloists'].sum() 
+# * 빈 리스트의 soloists는 사뿐히 무시
 
 # # 5. Final_DataFrame
 
 # ## 5-1. Get DataFrame
 
-semi_final = works_data.drop('soloists', axis=1).merge(worksWithSolo, 
+semi_final = works_data.drop('soloists', axis=1).merge(soloists_data, 
                              left_on=['workTitle_ID', 'programID', 'work_ID'],
                             right_on=['workTitle_ID', 'programID', 'work_ID'],
                             how='left')
@@ -214,7 +193,6 @@ print(len(semi_final.work_ID.unique()))
 print(len(works_data.work_ID.unique()))
 
 semi_final = semi_final.drop_duplicates()
-
 semi_final.shape
 
 final = semi_final.merge(concerts_data,
@@ -225,37 +203,12 @@ final = semi_final.merge(concerts_data,
 final.shape
 
 mask = final.duplicated()
-
 final[mask].shape
 
 final.drop_duplicates(inplace=True)
-
 final.shape
 
 final.head(2)
-
-# ## 5-2. Get unique key
-
-# * 심심해서 그냥 해봄... 별로 의미 없는 듯
-
-final2 = final.copy()
-
-final2.columns
-
-col_list = ['workTitle_ID', 'work_ID', 'Date']
-
-final2['test1'] = final2[col_list].values.tolist()
-
-final2['test1'].head()
-
-
-def join_list(s):
-    return ''.join(s)
-
-
-final2['test1'] = final2['test1'].apply(join_list)
-
-len(final2['test1'].unique())
 
 # ## 5-3. assign unique id
 
@@ -263,11 +216,11 @@ import uuid
 print(uuid.uuid4())
 
 uuid_list = [uuid.uuid4() for i in range(final.shape[0])]
-
 final['key'] = uuid_list
-
 len(final['key'].unique()) == final.shape[0]
 
 len(final['key'].unique())
 
 final.head(1)
+
+
